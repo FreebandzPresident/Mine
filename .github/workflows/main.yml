@@ -1,0 +1,74 @@
+name: Build macOS DMG
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pyinstaller
+
+      # If your app requires tesseract on macOS, install it here.
+      # (You currently have a Windows Tesseract exe in the repo, which won't run on macOS.)
+      - name: Install system deps (optional)
+        run: |
+          brew update
+          brew install tesseract create-dmg
+
+      - name: Build .app with PyInstaller
+        run: |
+          # Change the entry file if needed:
+          ENTRY="PNA_Tracker.py"
+
+          # --windowed makes a proper .app bundle (no terminal window)
+          # remove --windowed if this is a CLI tool
+          pyinstaller --noconfirm --clean \
+            --name "Mine" \
+            --windowed \
+            "$ENTRY"
+
+          ls -la dist
+
+      - name: Create DMG
+        run: |
+          APP_PATH="dist/Mine.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected $APP_PATH but not found. Listing dist/:"
+            ls -la dist
+            exit 1
+          fi
+
+          mkdir -p release
+          create-dmg \
+            --volname "Mine" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 120 \
+            --app-drop-link 600 185 \
+            "release/Mine-mac.dmg" \
+            "$APP_PATH"
+
+          ls -la release
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mine-mac-dmg
+          path: release/*.dmg
